@@ -10,14 +10,43 @@ contract Delance {
         bool paid;
     }
 
+bool locked = false;
+event RequestPaid(address receiver, uint256 amount);
+
+
+function payRequest(uint256 _index) public onlyFreelancer {
+
+    require(!locked, 'Reentrant detected!');
+
+    Request storage request = requests[_index];
+    require(!request.locked, "Request is locked");
+    require(!request.paid, "Already paid");
+
+    locked = true;
+
+    (bool success, bytes memory transactionBytes) =
+    freelancer.call{value:request.amount}('');
+    
+    require(success, "Transfer failed.");
+
+    request.paid = true;
+
+    locked = false;
+
+    emit RequestPaid(msg.sender, request.amount);
+
+}
+
     Request[] public requests;
 
-    address public employer;
-    address public freelancer;
+    address payable public employer;
+    address payable public freelancer;
     uint256 public deadline;
     uint256 public price;
 
-    constructor(address _freelancer, uint256 _deadline) public payable {
+    event RequestUnlocked(bool locked);
+
+    constructor(address payable _freelancer, uint256 _deadline) public payable {
         employer = msg.sender;
         freelancer = _freelancer;
         deadline = _deadline;
@@ -33,6 +62,8 @@ contract Delance {
         _;
     }
 
+event RequestCreated(string title, uint256 amount, bool locked, bool paid);
+
     function createRequest(string memory _title, uint256 _amount)
         public
         onlyFreelancer
@@ -45,9 +76,26 @@ contract Delance {
             paid: false
         });
         requests.push(request);
+
+        emit RequestCreated(_title, _amount, request.locked, request.paid);
     }
 
     function getAllRequests() public view returns (Request[] memory) {
         return requests;
     }
+
+
+    modifier onlyEmployer() {
+        require(msg.sender == employer, "Only Employer!");
+            _;
+
+    }
+        function unlockRequest(uint256 _index) public onlyEmployer {
+        Request storage request = requests[_index];
+        require(request.unlocked, "Already unlocked!");
+        request.locked = false;
+
+        emit RequestUnlocked(request.locked);
+    }
 }
+
